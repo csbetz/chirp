@@ -92,6 +92,65 @@ PTT_LIST = ["Area A", "Area B", "Main Tx", "Secondary Tx",
             "Low Power", "Ultra Hi Power", "Call"]
 VFO_SCANMODE_LIST = ["Current Band", "Range", "All"]
 
+# VFO scan range band labels
+VFO_RANGE_LABELS = [
+    "VHF (136-174)",
+    "UHF (400-479)",
+    "Range 3",
+    "Range 4",
+    "Range 5",
+    "Range 6",
+    "Range 7",
+    "Range 8",
+]
+
+
+def callid2str(cid):
+    """Decode a 6-byte caller ID (MDC-1200 style) to a string.
+
+    Each byte is a DTMF digit index (0-9). Terminated by 0x0F.
+    """
+    bin2ascii = "0123456789"
+    result = ""
+    for b in cid:
+        val = int(b)
+        if val == 0x0F or val == 0x0C:
+            break
+        if val == 0x0A:
+            val = 0x00
+        if val > 9:
+            break
+        result += bin2ascii[val]
+    return result
+
+
+def str2callid(val):
+    """Encode a caller ID string to a 6-byte bytearray.
+
+    Must be 3-6 digits, or empty/all-zeros to clear.
+    """
+    s = str(val).strip()
+    if not s or s == "000000":
+        return bytearray(6)
+    if len(s) < 3 or len(s) > 6:
+        raise errors.InvalidValueError(
+            "Caller ID must be 3-6 digits")
+    if s[0] == '0':
+        raise errors.InvalidValueError(
+            "First digit cannot be zero")
+    blk = bytearray()
+    for c in s:
+        if c not in "0123456789":
+            raise errors.InvalidValueError(
+                "Caller ID must be all digits")
+        blk.append(int(c))
+    if len(blk) < 6:
+        blk.append(0x0F)
+    while len(blk) < 6:
+        blk.append(0xF0)
+    return blk
+
+
 # CHIRP linear memory map (all offsets in linear space):
 #   0x0000-0x02C2  Unknown / unused
 #   0x02C2-0x0340  Frequency limits (RX/TX band edges)
@@ -274,6 +333,46 @@ struct {
 
 #seekto 0x7340;
 u8 valid[1000];
+
+#seekto 0x7740;
+struct {
+    ul16    Group_lower1;
+    ul16    Group_upper1;
+    ul16    Group_lower2;
+    ul16    Group_upper2;
+    ul16    Group_lower3;
+    ul16    Group_upper3;
+    ul16    Group_lower4;
+    ul16    Group_upper4;
+    ul16    Group_lower5;
+    ul16    Group_upper5;
+    ul16    Group_lower6;
+    ul16    Group_upper6;
+    ul16    Group_lower7;
+    ul16    Group_upper7;
+    ul16    Group_lower8;
+    ul16    Group_upper8;
+    ul16    Group_lower9;
+    ul16    Group_upper9;
+    ul16    Group_lower10;
+    ul16    Group_upper10;
+} scan_groups;
+
+#seekto 0x77e0;
+struct {
+    ul16    start;
+    ul16    end;
+} vfo_scan_range[8];
+
+#seekto 0x78e0;
+struct {
+    u8      cid[6];
+} call_ids[10];
+
+#seekto 0x7b40;
+struct {
+    char    name[12];
+} call_names[10];
 """
 
 
@@ -303,7 +402,6 @@ class KGQ10HRadio(WouxunKGBase):
     MODEL = "KG-Q10H"
     BAUD_RATE = 115200
     POWER_LEVELS = POWER_LEVELS
-    _record_start = 0x7C
     _model = b"KG-Q10H"
     _cryptbyte = 0x54
     _download_delay = 0.005
@@ -737,10 +835,14 @@ class KGQ10HRadio(WouxunKGBase):
 
         cfg_grp = RadioSettingGroup("cfg_grp", "Config Settings")
         key_grp = RadioSettingGroup("key_grp", "Key Settings")
+        scan_grp = RadioSettingGroup("scan_grp", "Scan Groups")
+        call_grp = RadioSettingGroup("call_grp", "Caller ID")
+        vfoscan_grp = RadioSettingGroup("vfoscan_grp", "VFO Scan Ranges")
         fmradio_grp = RadioSettingGroup("fmradio_grp", "FM Broadcast")
         oem_grp = RadioSettingGroup("oem_grp", "OEM Info")
 
-        group = RadioSettings(cfg_grp, key_grp, fmradio_grp, oem_grp)
+        group = RadioSettings(cfg_grp, key_grp, scan_grp, call_grp,
+                              vfoscan_grp, fmradio_grp, oem_grp)
 
         # --- Config Settings ---
 
@@ -1044,6 +1146,69 @@ class KGQ10HRadio(WouxunKGBase):
                           RadioSettingValueList(
                               PTT_LIST, current_index=_settings.ptt2))
         key_grp.append(rs)
+
+        # --- Scan Groups ---
+
+        _scangrps = self._memobj.scan_groups
+        for i in range(1, 11):
+            lower = getattr(_scangrps, "Group_lower%i" % i)
+            upper = getattr(_scangrps, "Group_upper%i" % i)
+            rs = RadioSetting(
+                "scan_groups.Group_lower%i" % i,
+                "Group %i - Lower Channel" % i,
+                RadioSettingValueInteger(1, 999, int(lower)))
+            scan_grp.append(rs)
+            rs = RadioSetting(
+                "scan_groups.Group_upper%i" % i,
+                "Group %i - Upper Channel" % i,
+                RadioSettingValueInteger(1, 999, int(upper)))
+            scan_grp.append(rs)
+
+        # --- Caller ID ---
+
+        def apply_callid(setting, obj):
+            obj.cid = str2callid(setting.value)
+
+        for i in range(10):
+            # Call name
+            _name = self._memobj.call_names[i]
+            _msg = ""
+            for char in _name.name:
+                c = chr(int(char))
+                if c in chirp_common.CHARSET_ASCII:
+                    _msg += c
+                elif int(char) == 0:
+                    break
+            val = RadioSettingValueString(0, 12, _msg.rstrip())
+            rs = RadioSetting("call_names[%i].name" % i,
+                              "Name %i" % (i + 1), val)
+            call_grp.append(rs)
+
+            # Call ID code
+            _cid = self._memobj.call_ids[i]
+            cid_str = callid2str(_cid.cid)
+            val = RadioSettingValueString(0, 6, cid_str)
+            rs = RadioSetting("call_ids[%i].cid" % i,
+                              "Code %i" % (i + 1), val)
+            rs.set_apply_callback(apply_callid, _cid)
+            call_grp.append(rs)
+
+        # --- VFO Scan Ranges ---
+
+        for i in range(8):
+            _range = self._memobj.vfo_scan_range[i]
+            start_mhz = int(_range.start)
+            end_mhz = int(_range.end)
+            rs = RadioSetting(
+                "vfo_scan_range[%i].start" % i,
+                "%s Start (MHz)" % VFO_RANGE_LABELS[i],
+                RadioSettingValueInteger(0, 999, start_mhz))
+            vfoscan_grp.append(rs)
+            rs = RadioSetting(
+                "vfo_scan_range[%i].end" % i,
+                "%s End (MHz)" % VFO_RANGE_LABELS[i],
+                RadioSettingValueInteger(0, 999, end_mhz))
+            vfoscan_grp.append(rs)
 
         # --- FM Broadcast Presets ---
 
