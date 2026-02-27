@@ -71,11 +71,11 @@ LEVEL10_LIST = ["OFF"] + [str(x) for x in range(1, 11)]
 SCANGRP_LIST = ["All"] + [str(x) for x in range(1, 11)]
 SCANMODE_LIST = ["TO", "CO", "SE"]
 SMUTESET_LIST = ["OFF", "Rx", "Tx", "Rx+Tx"]
-TONESCANSAVELIST = ["Rx", "Tx", "Tx/Rx"]
+TONE_SCN_SAVE_LIST = ["Rx", "Tx", "Tx/Rx"]
 DSPBRTACT_MAP = [("%d" % x, x) for x in range(1, 11)]
 DSPBRTSBY_LIST = ["OFF"] + [str(x) for x in range(1, 11)]
 BATT_DISP_LIST = ["Icon", "Voltage", "Percent"]
-WX_TYPE = ["Weather", "Icon-Only", "Tone", "Flash", "Tone-Flash"]
+WX_TYPE_LIST = ["Weather", "Icon-Only", "Tone", "Flash", "Tone-Flash"]
 THEME_LIST = ["White-1", "White-2", "Black-1", "Black-2",
               "Cool", "Rain", "NotARubi", "Sky", "BTWR", "Candy",
               "Custom 1", "Custom 2", "Custom 3", "Custom 4"]
@@ -191,10 +191,10 @@ struct {
     u8      work_mode_b;
     ul16    work_ch_a;
     ul16    work_ch_b;
-    u8      vfostepA;
-    u8      vfostepB;
-    u8      squelchA;
-    u8      squelchB;
+    u8      vfostep_a;
+    u8      vfostep_b;
+    u8      squelch_a;
+    u8      squelch_b;
     u8      bcl_a;
     u8      bcl_b;
     u8      vfoband_a;
@@ -745,13 +745,13 @@ class KGQ10HRadio(WouxunKGBase):
         # --- Config Settings ---
 
         # audio and alerts
-        rs = RadioSetting("squelchA", "Squelch Level A",
+        rs = RadioSetting("squelch_a", "Squelch Level A",
                           RadioSettingValueList(
-                              LEVEL10_LIST, current_index=_settings.squelchA))
+                              LEVEL10_LIST, current_index=_settings.squelch_a))
         cfg_grp.append(rs)
-        rs = RadioSetting("squelchB", "Squelch Level B",
+        rs = RadioSetting("squelch_b", "Squelch Level B",
                           RadioSettingValueList(
-                              LEVEL10_LIST, current_index=_settings.squelchB))
+                              LEVEL10_LIST, current_index=_settings.squelch_b))
         cfg_grp.append(rs)
         rs = RadioSetting("vox", "VOX Level",
                           RadioSettingValueList(
@@ -809,7 +809,7 @@ class KGQ10HRadio(WouxunKGBase):
         cfg_grp.append(rs)
         rs = RadioSetting("tone_scn_save", "Tone Scan Save",
                           RadioSettingValueList(
-                              TONESCANSAVELIST,
+                              TONE_SCN_SAVE_LIST,
                               current_index=_settings.tone_scn_save))
         cfg_grp.append(rs)
         rs = RadioSetting("prich_sw", "Priority Channel Scan",
@@ -880,7 +880,7 @@ class KGQ10HRadio(WouxunKGBase):
         cfg_grp.append(rs)
         rs = RadioSetting("wxalert_type", "Weather Alert Type",
                           RadioSettingValueList(
-                              WX_TYPE,
+                              WX_TYPE_LIST,
                               current_index=_settings.wxalert_type))
         cfg_grp.append(rs)
         rs = RadioSetting("batt_ind", "Battery Indicator",
@@ -981,27 +981,27 @@ class KGQ10HRadio(WouxunKGBase):
 
         # --- Key Settings ---
 
-        _msg = str(_settings.dispstr).split("\0")[0]
-        val = RadioSettingValueString(0, 12, _msg)
+        _str = str(_settings.dispstr).split("\0")[0]
+        val = RadioSettingValueString(0, 12, _str)
         val.set_mutable(True)
         rs = RadioSetting("dispstr", "Display String", val)
         key_grp.append(rs)
 
-        _msg = str(_settings.areamsg).split("\0")[0]
-        val = RadioSettingValueString(0, 12, _msg)
+        _str = str(_settings.areamsg).split("\0")[0]
+        val = RadioSettingValueString(0, 12, _str)
         val.set_mutable(True)
         rs = RadioSetting("areamsg", "Area Message", val)
         key_grp.append(rs)
 
         pswdchars = "0123456789"
-        _msg = str(_settings.mode_sw_pwd).split("\0")[0]
-        val = RadioSettingValueString(0, 6, _msg, False)
+        _str = str(_settings.mode_sw_pwd).split("\0")[0]
+        val = RadioSettingValueString(0, 6, _str, False)
         val.set_charset(pswdchars)
         rs = RadioSetting("mode_sw_pwd", "Mode Switch Password", val)
         key_grp.append(rs)
 
-        _msg = str(_settings.reset_pwd).split("\0")[0]
-        val = RadioSettingValueString(0, 6, _msg, False)
+        _str = str(_settings.reset_pwd).split("\0")[0]
+        val = RadioSettingValueString(0, 6, _str, False)
         val.set_charset(pswdchars)
         rs = RadioSetting("reset_pwd", "Reset Password", val)
         key_grp.append(rs)
@@ -1111,6 +1111,7 @@ class KGQ10HRadio(WouxunKGBase):
                 continue
             else:
                 try:
+                    # Resolve dotted names (e.g. "fm[3].fm_radio")
                     if "." in element.get_name():
                         bits = element.get_name().split(".")
                         obj = self._memobj
@@ -1131,6 +1132,7 @@ class KGQ10HRadio(WouxunKGBase):
                         LOG.debug("Using apply callback")
                         element.run_apply_callback()
                     elif self._is_fmradio(element):
+                        # rescale float to radio integer (e.g. 88.5 → 885)
                         setattr(obj, setting,
                                 int(element.values()[0]._current * 10.0))
                     else:
