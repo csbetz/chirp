@@ -29,7 +29,9 @@ import logging
 from chirp import util, chirp_common, bitwise, memmap, errors, directory
 from chirp.drivers.wouxun_kg_common import WouxunKGBase, strxor
 from chirp.settings import RadioSetting, RadioSettingGroup, \
-    RadioSettingValueBoolean, RadioSettingValueList
+    RadioSettingValueBoolean, RadioSettingValueList, \
+    RadioSettingValueInteger, RadioSettingValueString, \
+    RadioSettingValueFloat, RadioSettingValueMap, RadioSettings
 
 LOG = logging.getLogger(__name__)
 
@@ -54,6 +56,42 @@ SCRAMBLER_LIST = ["Off", "1", "2", "3", "4", "5", "6", "7", "8"]
 MUTE_MODE_LIST = ["Off", "QT", "QT+DTMF", "QT*DTMF"]
 CALL_GROUP_LIST = [str(x) for x in range(1, 21)]
 
+# Settings option lists
+ROGER_LIST = ["OFF", "Begin", "End", "Both"]
+TIMEOUT_LIST = ["OFF"] + [str(x) + "s" for x in range(15, 901, 15)]
+BACKLIGHT_LIST = ["Always On"] + [str(x) + "s" for x in range(1, 21)] \
+    + ["Always Off"]
+PONMSG_LIST = ["Startup Display", "Battery Volts"]
+DTMFST_LIST = ["OFF", "DTMF", "ANI", "DTMF+ANI"]
+DTMF_TIMES = [('%dms' % t, t // 10) for t in range(50, 501, 10)]
+ALERTS_LIST = ["1750 Hz", "2100 Hz", "1000 Hz", "1450 Hz"]
+PTTID_LIST = ["OFF", "BOT", "EOT", "Both"]
+PTTDELAY_TIMES = [('%dms' % d, d // 100) for d in range(100, 3001, 100)]
+LIST_10 = ["OFF"] + [str(x) for x in range(1, 11)]
+SCANGRP_LIST = ["All"] + [str(x) for x in range(1, 11)]
+SCANMODE_LIST = ["TO", "CO", "SE"]
+SMUTESET_LIST = ["OFF", "Rx", "Tx", "Rx+Tx"]
+TONESCANSAVELIST = ["Rx", "Tx", "Tx/Rx"]
+DSPBRTACT_MAP = [("%d" % x, x) for x in range(1, 11)]
+DSPBRTSBY_LIST = ["OFF"] + [str(x) for x in range(1, 11)]
+BATT_DISP_LIST = ["Icon", "Voltage", "Percent"]
+WX_TYPE = ["Weather", "Icon-Only", "Tone", "Flash", "Tone-Flash"]
+THEME_LIST = ["White-1", "White-2", "Black-1", "Black-2",
+              "Cool", "Rain", "NotARubi", "Sky", "BTWR", "Candy",
+              "Custom 1", "Custom 2", "Custom 3", "Custom 4"]
+RPTTYPE_MAP = [("X-DIRPT", 1), ("X-TWRPT", 2)]
+HOLD_TIMES = ["OFF"] + [str(x) + "s" for x in range(100, 5001, 100)]
+WORKMODE_LIST = ["VFO", "Ch.Number", "Ch.Freq", "Ch.Name"]
+ACTIVE_AREA_LIST = ["Area A - Top", "Area B - Bottom"]
+TDR_LIST = ["TDR ON", "TDR OFF"]
+PROG_KEY_LIST = ["DISABLE/UNDEF", "ALARM", "BACKLIGHT", "BRIGHT+",
+                 "FAVORITE", "FLASHLIGHT", "FM-RADIO", "DISPLAY-MAP",
+                 "MONITOR", "REVERSE", "SCAN", "SCAN-CTC", "SCAN-DCS",
+                 "SOS", "STROBE", "TALK-AROUND", "WEATHER"]
+PTT_LIST = ["Area A", "Area B", "Main Tx", "Secondary Tx",
+            "Low Power", "Ultra Hi Power", "Call"]
+VFO_SCANMODE_LIST = ["Current Band", "Range", "All"]
+
 # CHIRP linear memory map (all offsets in linear space):
 #   0x0000-0x02C2  Unknown / unused
 #   0x02C2-0x0340  Frequency limits (RX/TX band edges)
@@ -75,6 +113,140 @@ CALL_GROUP_LIST = [str(x) for x in range(1, 21)]
 #   0x7B40-0x8000  Call names (100 x 12 bytes)
 
 MEM_FORMAT = """
+#seekto 0x0340;
+struct {
+    char    oem1[8];
+    #seekto 0x036c;
+    char    name[8];
+    #seekto 0x0378;
+    char    date[10];
+    #seekto 0x0392;
+    char    firmware[6];
+} oem_info;
+
+#seekto 0x0440;
+struct {
+    u8      channel_menu;
+    u8      power_save;
+    u8      roger_beep;
+    u8      timeout;
+    u8      toalarm;
+    u8      wxalert;
+    u8      wxalert_type;
+    u8      vox;
+    u8      unknown0448;
+    u8      voice;
+    u8      beep;
+    u8      scan_rev;
+    u8      backlight;
+    u8      DspBrtAct;
+    u8      DspBrtSby;
+    u8      ponmsg;
+    u8      ptt_id;
+    u8      ptt_delay;
+    u8      dtmf_st;
+    u8      dtmf_tx_time;
+    u8      dtmf_interval;
+    u8      ring_time;
+    u8      alert;
+    u8      autolock;
+    ul16    pri_ch;
+    u8      prich_sw;
+    u8      rpttype;
+    u8      rpt_spk;
+    u8      rpt_ptt;
+    u8      rpt_tone;
+    u8      rpt_hold;
+    u8      scan_det;
+    u8      smuteset;
+    u8      batt_ind;
+    u8      ToneScnSave;
+    #seekto 0x0464;
+    u8      theme;
+    u8      unknown0465;
+    u8      disp_time;
+    u8      time_zone;
+    u8      GPS_send_freq;
+    u8      GPS;
+    u8      GPS_rcv;
+    ul16    custcol1_text;
+    ul16    custcol1_bg;
+    ul16    custcol1_icon;
+    ul16    custcol1_line;
+    ul16    custcol2_text;
+    ul16    custcol2_bg;
+    ul16    custcol2_icon;
+    ul16    custcol2_line;
+    ul16    custcol3_text;
+    ul16    custcol3_bg;
+    ul16    custcol3_icon;
+    ul16    custcol3_line;
+    ul16    custcol4_text;
+    ul16    custcol4_bg;
+    ul16    custcol4_icon;
+    ul16    custcol4_line;
+    char    mode_sw_pwd[6];
+    char    reset_pwd[6];
+    u8      work_mode_a;
+    u8      work_mode_b;
+    ul16    work_ch_a;
+    ul16    work_ch_b;
+    u8      vfostepA;
+    u8      vfostepB;
+    u8      squelchA;
+    u8      squelchB;
+    u8      BCL_A;
+    u8      BCL_B;
+    u8      vfobandA;
+    u8      vfobandB;
+    #seekto 0x04a7;
+    u8      top_short;
+    u8      top_long;
+    u8      ptt1;
+    u8      ptt2;
+    u8      pf1_short;
+    u8      pf1_long;
+    u8      pf2_short;
+    u8      pf2_long;
+    u8      ScnGrpA_Act;
+    u8      ScnGrpB_Act;
+    u8      vfo_scanmodea;
+    u8      vfo_scanmodeb;
+    u8      ani_id[6];
+    u8      scc[6];
+    #seekto 0x04c1;
+    u8      act_area;
+    u8      tdr;
+    u8      keylock;
+    #seekto 0x04c7;
+    u8      stopwatch;
+    u8      unknown04c8;
+    char    dispstr[12];
+    #seekto 0x04dd;
+    char    areamsg[12];
+    u8      unknown04e9;
+    u8      unknown04ea;
+    u8      ani_sw;
+    u8      ani_code[6];
+    u8      unknown04f1;
+    u8      unknown04f2;
+    u8      unknown04f3;
+    u8      unknown04f4;
+    u8      main_band;
+    u8      TDR_single_mode;
+    u8      unknown04f7;
+    u8      unknown04f8;
+    u8      cur_call_grp;
+    u8      VFO_repeater_a;
+    u8      VFO_repeater_b;
+    u8      sim_rec;
+} settings;
+
+#seekto 0x78B0;
+struct {
+    ul16    FM_radio;
+} fm[20];
+
 #seekto 0x05e0;
 struct {
     ul32    rxfreq;
@@ -313,7 +485,7 @@ class KGQ10HRadio(WouxunKGBase):
 
     def get_features(self):
         rf = chirp_common.RadioFeatures()
-        rf.has_settings = False
+        rf.has_settings = True
         rf.has_ctone = True
         rf.has_rx_dtcs = True
         rf.has_cross = True
@@ -556,3 +728,405 @@ class KGQ10HRadio(WouxunKGBase):
             msgs.append(chirp_common.ValidationWarning(
                 _('Frequency in this range must not be AM mode')))
         return msgs + super().validate_memory(mem)
+
+    # --- Settings ---
+
+    def _get_settings(self):
+        _settings = self._memobj.settings
+        _oem = self._memobj.oem_info
+
+        cfg_grp = RadioSettingGroup("cfg_grp", "Config Settings")
+        key_grp = RadioSettingGroup("key_grp", "Key Settings")
+        fmradio_grp = RadioSettingGroup("fmradio_grp", "FM Broadcast")
+        oem_grp = RadioSettingGroup("oem_grp", "OEM Info")
+
+        group = RadioSettings(cfg_grp, key_grp, fmradio_grp, oem_grp)
+
+        # --- Config Settings ---
+
+        rs = RadioSetting("squelchA", "Squelch Level A",
+                          RadioSettingValueList(
+                              LIST_10, current_index=_settings.squelchA))
+        cfg_grp.append(rs)
+        rs = RadioSetting("squelchB", "Squelch Level B",
+                          RadioSettingValueList(
+                              LIST_10, current_index=_settings.squelchB))
+        cfg_grp.append(rs)
+        rs = RadioSetting("vox", "VOX Level",
+                          RadioSettingValueList(
+                              LIST_10, current_index=_settings.vox))
+        cfg_grp.append(rs)
+        rs = RadioSetting("timeout", "Timeout Timer",
+                          RadioSettingValueList(
+                              TIMEOUT_LIST, current_index=_settings.timeout))
+        cfg_grp.append(rs)
+        rs = RadioSetting("toalarm", "Timeout Alarm",
+                          RadioSettingValueList(
+                              LIST_10, current_index=_settings.toalarm))
+        cfg_grp.append(rs)
+        rs = RadioSetting("roger_beep", "Roger Beep",
+                          RadioSettingValueList(
+                              ROGER_LIST,
+                              current_index=_settings.roger_beep))
+        cfg_grp.append(rs)
+        rs = RadioSetting("voice", "Voice Prompts",
+                          RadioSettingValueBoolean(_settings.voice))
+        cfg_grp.append(rs)
+        rs = RadioSetting("beep", "Keypad Beep",
+                          RadioSettingValueBoolean(_settings.beep))
+        cfg_grp.append(rs)
+        rs = RadioSetting("backlight", "Backlight Active Time",
+                          RadioSettingValueList(
+                              BACKLIGHT_LIST,
+                              current_index=_settings.backlight))
+        cfg_grp.append(rs)
+        rs = RadioSetting("DspBrtAct", "Display Brightness Active",
+                          RadioSettingValueMap(
+                              DSPBRTACT_MAP, _settings.DspBrtAct))
+        cfg_grp.append(rs)
+        rs = RadioSetting("DspBrtSby", "Display Brightness Standby",
+                          RadioSettingValueList(
+                              DSPBRTSBY_LIST,
+                              current_index=_settings.DspBrtSby))
+        cfg_grp.append(rs)
+        rs = RadioSetting("ponmsg", "Power-On Message",
+                          RadioSettingValueList(
+                              PONMSG_LIST,
+                              current_index=_settings.ponmsg))
+        cfg_grp.append(rs)
+        rs = RadioSetting("scan_rev", "Scan Mode",
+                          RadioSettingValueList(
+                              SCANMODE_LIST,
+                              current_index=_settings.scan_rev))
+        cfg_grp.append(rs)
+        rs = RadioSetting("scan_det", "Scan Mode Tone Detect",
+                          RadioSettingValueBoolean(_settings.scan_det))
+        cfg_grp.append(rs)
+        rs = RadioSetting("ToneScnSave", "Tone Scan Save",
+                          RadioSettingValueList(
+                              TONESCANSAVELIST,
+                              current_index=_settings.ToneScnSave))
+        cfg_grp.append(rs)
+        rs = RadioSetting("prich_sw", "Priority Channel Scan",
+                          RadioSettingValueBoolean(_settings.prich_sw))
+        cfg_grp.append(rs)
+        rs = RadioSetting(
+            "pri_ch", "Priority Channel",
+            RadioSettingValueInteger(1, 999, _settings.pri_ch))
+        cfg_grp.append(rs)
+        rs = RadioSetting("BCL_A", "Busy Channel Lockout A",
+                          RadioSettingValueBoolean(_settings.BCL_A))
+        cfg_grp.append(rs)
+        rs = RadioSetting("BCL_B", "Busy Channel Lockout B",
+                          RadioSettingValueBoolean(_settings.BCL_B))
+        cfg_grp.append(rs)
+        rs = RadioSetting("dtmf_st", "DTMF Sidetone",
+                          RadioSettingValueList(
+                              DTMFST_LIST,
+                              current_index=_settings.dtmf_st))
+        cfg_grp.append(rs)
+        rs = RadioSetting("dtmf_tx_time", "DTMF Tx Duration",
+                          RadioSettingValueMap(
+                              DTMF_TIMES, _settings.dtmf_tx_time))
+        cfg_grp.append(rs)
+        rs = RadioSetting("dtmf_interval", "DTMF Interval",
+                          RadioSettingValueMap(
+                              DTMF_TIMES, _settings.dtmf_interval))
+        cfg_grp.append(rs)
+        rs = RadioSetting("ptt_id", "PTT ID",
+                          RadioSettingValueList(
+                              PTTID_LIST,
+                              current_index=_settings.ptt_id))
+        cfg_grp.append(rs)
+        rs = RadioSetting("ptt_delay", "PTT ID Delay",
+                          RadioSettingValueMap(
+                              PTTDELAY_TIMES, _settings.ptt_delay))
+        cfg_grp.append(rs)
+        rs = RadioSetting("alert", "Alert Tone",
+                          RadioSettingValueList(
+                              ALERTS_LIST,
+                              current_index=_settings.alert))
+        cfg_grp.append(rs)
+        rs = RadioSetting("ring_time", "Ring Time",
+                          RadioSettingValueList(
+                              LIST_10, current_index=_settings.ring_time))
+        cfg_grp.append(rs)
+        rs = RadioSetting("autolock", "Auto Key Lock",
+                          RadioSettingValueBoolean(_settings.autolock))
+        cfg_grp.append(rs)
+        rs = RadioSetting("keylock", "Key Lock",
+                          RadioSettingValueBoolean(_settings.keylock))
+        cfg_grp.append(rs)
+        rs = RadioSetting("stopwatch", "Stopwatch",
+                          RadioSettingValueBoolean(_settings.stopwatch))
+        cfg_grp.append(rs)
+        rs = RadioSetting("channel_menu", "Channel Menu Mode",
+                          RadioSettingValueBoolean(_settings.channel_menu))
+        cfg_grp.append(rs)
+        rs = RadioSetting("power_save", "Battery Saver",
+                          RadioSettingValueBoolean(_settings.power_save))
+        cfg_grp.append(rs)
+        rs = RadioSetting("wxalert", "Weather Alert",
+                          RadioSettingValueBoolean(_settings.wxalert))
+        cfg_grp.append(rs)
+        rs = RadioSetting("wxalert_type", "Weather Alert Type",
+                          RadioSettingValueList(
+                              WX_TYPE,
+                              current_index=_settings.wxalert_type))
+        cfg_grp.append(rs)
+        rs = RadioSetting("batt_ind", "Battery Indicator",
+                          RadioSettingValueList(
+                              BATT_DISP_LIST,
+                              current_index=_settings.batt_ind))
+        cfg_grp.append(rs)
+        rs = RadioSetting("theme", "Display Theme",
+                          RadioSettingValueList(
+                              THEME_LIST,
+                              current_index=_settings.theme))
+        cfg_grp.append(rs)
+        rs = RadioSetting("rpttype", "Repeater Type",
+                          RadioSettingValueMap(
+                              RPTTYPE_MAP, _settings.rpttype))
+        cfg_grp.append(rs)
+        rs = RadioSetting("rpt_spk", "Repeater Speaker",
+                          RadioSettingValueBoolean(_settings.rpt_spk))
+        cfg_grp.append(rs)
+        rs = RadioSetting("rpt_ptt", "Repeater PTT",
+                          RadioSettingValueBoolean(_settings.rpt_ptt))
+        cfg_grp.append(rs)
+        rs = RadioSetting("rpt_tone", "Repeater Tone",
+                          RadioSettingValueBoolean(_settings.rpt_tone))
+        cfg_grp.append(rs)
+        rs = RadioSetting("rpt_hold", "Repeater Hold Time",
+                          RadioSettingValueList(
+                              HOLD_TIMES,
+                              current_index=_settings.rpt_hold))
+        cfg_grp.append(rs)
+        rs = RadioSetting("smuteset", "Secondary Mute",
+                          RadioSettingValueList(
+                              SMUTESET_LIST,
+                              current_index=_settings.smuteset))
+        cfg_grp.append(rs)
+        rs = RadioSetting("work_mode_a", "Work Mode A",
+                          RadioSettingValueList(
+                              WORKMODE_LIST,
+                              current_index=_settings.work_mode_a))
+        cfg_grp.append(rs)
+        rs = RadioSetting("work_mode_b", "Work Mode B",
+                          RadioSettingValueList(
+                              WORKMODE_LIST,
+                              current_index=_settings.work_mode_b))
+        cfg_grp.append(rs)
+        rs = RadioSetting(
+            "work_ch_a", "Work Channel A",
+            RadioSettingValueInteger(1, 999, _settings.work_ch_a))
+        cfg_grp.append(rs)
+        rs = RadioSetting(
+            "work_ch_b", "Work Channel B",
+            RadioSettingValueInteger(1, 999, _settings.work_ch_b))
+        cfg_grp.append(rs)
+        rs = RadioSetting("act_area", "Active Area",
+                          RadioSettingValueList(
+                              ACTIVE_AREA_LIST,
+                              current_index=_settings.act_area))
+        cfg_grp.append(rs)
+        rs = RadioSetting("tdr", "TDR (Dual Watch)",
+                          RadioSettingValueList(
+                              TDR_LIST, current_index=_settings.tdr))
+        cfg_grp.append(rs)
+        rs = RadioSetting("sim_rec", "Simultaneous Receive",
+                          RadioSettingValueBoolean(_settings.sim_rec))
+        cfg_grp.append(rs)
+        rs = RadioSetting("ScnGrpA_Act", "Scan Group A Active",
+                          RadioSettingValueList(
+                              SCANGRP_LIST,
+                              current_index=_settings.ScnGrpA_Act))
+        cfg_grp.append(rs)
+        rs = RadioSetting("ScnGrpB_Act", "Scan Group B Active",
+                          RadioSettingValueList(
+                              SCANGRP_LIST,
+                              current_index=_settings.ScnGrpB_Act))
+        cfg_grp.append(rs)
+        rs = RadioSetting("vfo_scanmodea", "VFO Scan Mode A",
+                          RadioSettingValueList(
+                              VFO_SCANMODE_LIST,
+                              current_index=_settings.vfo_scanmodea))
+        cfg_grp.append(rs)
+        rs = RadioSetting("vfo_scanmodeb", "VFO Scan Mode B",
+                          RadioSettingValueList(
+                              VFO_SCANMODE_LIST,
+                              current_index=_settings.vfo_scanmodeb))
+        cfg_grp.append(rs)
+        rs = RadioSetting("cur_call_grp", "Current Call Group",
+                          RadioSettingValueList(
+                              LIST_10,
+                              current_index=_settings.cur_call_grp))
+        cfg_grp.append(rs)
+        rs = RadioSetting("ani_sw", "ANI Switch",
+                          RadioSettingValueBoolean(_settings.ani_sw))
+        cfg_grp.append(rs)
+
+        # --- Key Settings ---
+
+        _msg = str(_settings.dispstr).split("\0")[0]
+        val = RadioSettingValueString(0, 12, _msg)
+        val.set_mutable(True)
+        rs = RadioSetting("dispstr", "Display String", val)
+        key_grp.append(rs)
+
+        _msg = str(_settings.areamsg).split("\0")[0]
+        val = RadioSettingValueString(0, 12, _msg)
+        val.set_mutable(True)
+        rs = RadioSetting("areamsg", "Area Message", val)
+        key_grp.append(rs)
+
+        pswdchars = "0123456789"
+        _msg = str(_settings.mode_sw_pwd).split("\0")[0]
+        val = RadioSettingValueString(0, 6, _msg, False)
+        val.set_charset(pswdchars)
+        rs = RadioSetting("mode_sw_pwd", "Mode Switch Password", val)
+        key_grp.append(rs)
+
+        _msg = str(_settings.reset_pwd).split("\0")[0]
+        val = RadioSettingValueString(0, 6, _msg, False)
+        val.set_charset(pswdchars)
+        rs = RadioSetting("reset_pwd", "Reset Password", val)
+        key_grp.append(rs)
+
+        rs = RadioSetting("pf1_short", "PF1 Short Press",
+                          RadioSettingValueList(
+                              PROG_KEY_LIST,
+                              current_index=_settings.pf1_short))
+        key_grp.append(rs)
+        rs = RadioSetting("pf1_long", "PF1 Long Press",
+                          RadioSettingValueList(
+                              PROG_KEY_LIST,
+                              current_index=_settings.pf1_long))
+        key_grp.append(rs)
+        rs = RadioSetting("pf2_short", "PF2 Short Press",
+                          RadioSettingValueList(
+                              PROG_KEY_LIST,
+                              current_index=_settings.pf2_short))
+        key_grp.append(rs)
+        rs = RadioSetting("pf2_long", "PF2 Long Press",
+                          RadioSettingValueList(
+                              PROG_KEY_LIST,
+                              current_index=_settings.pf2_long))
+        key_grp.append(rs)
+        rs = RadioSetting("top_short", "Top Key Short Press",
+                          RadioSettingValueList(
+                              PROG_KEY_LIST,
+                              current_index=_settings.top_short))
+        key_grp.append(rs)
+        rs = RadioSetting("top_long", "Top Key Long Press",
+                          RadioSettingValueList(
+                              PROG_KEY_LIST,
+                              current_index=_settings.top_long))
+        key_grp.append(rs)
+        rs = RadioSetting("ptt1", "PTT1 Key",
+                          RadioSettingValueList(
+                              PTT_LIST, current_index=_settings.ptt1))
+        key_grp.append(rs)
+        rs = RadioSetting("ptt2", "PTT2 Key",
+                          RadioSettingValueList(
+                              PTT_LIST, current_index=_settings.ptt2))
+        key_grp.append(rs)
+
+        # --- FM Broadcast Presets ---
+
+        for i in range(20):
+            val = self._memobj.fm[i].FM_radio
+            rs = RadioSetting(
+                "fm[%i].FM_radio" % i, "FM Preset %i" % (i + 1),
+                RadioSettingValueFloat(76.0, 108.0, val / 10.0,
+                                       0.1, 1))
+            fmradio_grp.append(rs)
+
+        # --- OEM Info (read-only) ---
+
+        def _decode(lst):
+            _str = ''.join([chr(int(c)) for c in lst
+                            if chr(int(c)) in chirp_common.CHARSET_ASCII])
+            return _str
+
+        def do_nothing(setting, obj):
+            return
+
+        _str = _decode(_oem.oem1)
+        val = RadioSettingValueString(0, 8, _str)
+        val.set_mutable(False)
+        rs = RadioSetting("oem_info.oem1", "OEM String", val)
+        rs.set_apply_callback(do_nothing, _settings)
+        oem_grp.append(rs)
+
+        _str = _decode(_oem.name)
+        val = RadioSettingValueString(0, 8, _str)
+        val.set_mutable(False)
+        rs = RadioSetting("oem_info.name", "Model Name", val)
+        rs.set_apply_callback(do_nothing, _settings)
+        oem_grp.append(rs)
+
+        _str = _decode(_oem.date)
+        val = RadioSettingValueString(0, 10, _str)
+        val.set_mutable(False)
+        rs = RadioSetting("oem_info.date", "OEM Date", val)
+        rs.set_apply_callback(do_nothing, _settings)
+        oem_grp.append(rs)
+
+        _str = _decode(_oem.firmware)
+        val = RadioSettingValueString(0, 6, _str)
+        val.set_mutable(False)
+        rs = RadioSetting("oem_info.firmware", "Firmware Version", val)
+        rs.set_apply_callback(do_nothing, _settings)
+        oem_grp.append(rs)
+
+        return group
+
+    def get_settings(self):
+        try:
+            return self._get_settings()
+        except Exception:
+            import traceback
+            LOG.error("Failed to parse settings: %s",
+                      traceback.format_exc())
+            return None
+
+    def set_settings(self, settings):
+        for element in settings:
+            if not isinstance(element, RadioSetting):
+                self.set_settings(element)
+                continue
+            else:
+                try:
+                    if "." in element.get_name():
+                        bits = element.get_name().split(".")
+                        obj = self._memobj
+                        for bit in bits[:-1]:
+                            if "[" in bit and "]" in bit:
+                                bit, index = bit.split("[", 1)
+                                index, junk = index.split("]", 1)
+                                index = int(index)
+                                obj = getattr(obj, bit)[index]
+                            else:
+                                obj = getattr(obj, bit)
+                        setting = bits[-1]
+                    else:
+                        obj = self._memobj.settings
+                        setting = element.get_name()
+
+                    if element.has_apply_callback():
+                        LOG.debug("Using apply callback")
+                        element.run_apply_callback()
+                    elif self._is_fmradio(element):
+                        setattr(obj, setting,
+                                int(element.values()[0]._current * 10.0))
+                    else:
+                        LOG.debug("Setting %s = %s" %
+                                  (setting, element.value))
+                        setattr(obj, setting, element.value)
+                except Exception:
+                    LOG.debug(element.get_name())
+                    raise
+
+    def _is_fmradio(self, element):
+        return "FM_radio" in element.get_name()
