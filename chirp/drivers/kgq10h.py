@@ -67,7 +67,7 @@ DTMF_TIMES = [('%dms' % t, t // 10) for t in range(50, 501, 10)]
 ALERTS_LIST = ["1750 Hz", "2100 Hz", "1000 Hz", "1450 Hz"]
 PTTID_LIST = ["OFF", "BOT", "EOT", "Both"]
 PTTDELAY_TIMES = [('%dms' % d, d // 100) for d in range(100, 3001, 100)]
-LIST_10 = ["OFF"] + [str(x) for x in range(1, 11)]
+LEVEL10_LIST = ["OFF"] + [str(x) for x in range(1, 11)]
 SCANGRP_LIST = ["All"] + [str(x) for x in range(1, 11)]
 SCANMODE_LIST = ["TO", "CO", "SE"]
 SMUTESET_LIST = ["OFF", "Rx", "Tx", "Rx+Tx"]
@@ -139,8 +139,8 @@ struct {
     u8      beep;
     u8      scan_rev;
     u8      backlight;
-    u8      DspBrtAct;
-    u8      DspBrtSby;
+    u8      dsp_brt_act;
+    u8      dsp_brt_sby;
     u8      ponmsg;
     u8      ptt_id;
     u8      ptt_delay;
@@ -160,15 +160,15 @@ struct {
     u8      scan_det;
     u8      smuteset;
     u8      batt_ind;
-    u8      ToneScnSave;
+    u8      tone_scn_save;
     #seekto 0x0464;
     u8      theme;
     u8      unknown0465;
     u8      disp_time;
     u8      time_zone;
-    u8      GPS_send_freq;
-    u8      GPS;
-    u8      GPS_rcv;
+    u8      gps_send_freq;
+    u8      gps;
+    u8      gps_rcv;
     ul16    custcol1_text;
     ul16    custcol1_bg;
     ul16    custcol1_icon;
@@ -195,10 +195,10 @@ struct {
     u8      vfostepB;
     u8      squelchA;
     u8      squelchB;
-    u8      BCL_A;
-    u8      BCL_B;
-    u8      vfobandA;
-    u8      vfobandB;
+    u8      bcl_a;
+    u8      bcl_b;
+    u8      vfoband_a;
+    u8      vfoband_b;
     #seekto 0x04a7;
     u8      top_short;
     u8      top_long;
@@ -208,8 +208,8 @@ struct {
     u8      pf1_long;
     u8      pf2_short;
     u8      pf2_long;
-    u8      ScnGrpA_Act;
-    u8      ScnGrpB_Act;
+    u8      scn_grp_a_act;
+    u8      scn_grp_b_act;
     u8      vfo_scanmodea;
     u8      vfo_scanmodeb;
     u8      ani_id[6];
@@ -233,18 +233,18 @@ struct {
     u8      unknown04f3;
     u8      unknown04f4;
     u8      main_band;
-    u8      TDR_single_mode;
+    u8      tdr_single_mode;
     u8      unknown04f7;
     u8      unknown04f8;
     u8      cur_call_grp;
-    u8      VFO_repeater_a;
-    u8      VFO_repeater_b;
+    u8      vfo_repeater_a;
+    u8      vfo_repeater_b;
     u8      sim_rec;
 } settings;
 
 #seekto 0x78B0;
 struct {
-    ul16    FM_radio;
+    ul16    fm_radio;
 } fm[20];
 
 #seekto 0x05e0;
@@ -744,17 +744,18 @@ class KGQ10HRadio(WouxunKGBase):
 
         # --- Config Settings ---
 
+        # audio and alerts
         rs = RadioSetting("squelchA", "Squelch Level A",
                           RadioSettingValueList(
-                              LIST_10, current_index=_settings.squelchA))
+                              LEVEL10_LIST, current_index=_settings.squelchA))
         cfg_grp.append(rs)
         rs = RadioSetting("squelchB", "Squelch Level B",
                           RadioSettingValueList(
-                              LIST_10, current_index=_settings.squelchB))
+                              LEVEL10_LIST, current_index=_settings.squelchB))
         cfg_grp.append(rs)
         rs = RadioSetting("vox", "VOX Level",
                           RadioSettingValueList(
-                              LIST_10, current_index=_settings.vox))
+                              LEVEL10_LIST, current_index=_settings.vox))
         cfg_grp.append(rs)
         rs = RadioSetting("timeout", "Timeout Timer",
                           RadioSettingValueList(
@@ -762,7 +763,7 @@ class KGQ10HRadio(WouxunKGBase):
         cfg_grp.append(rs)
         rs = RadioSetting("toalarm", "Timeout Alarm",
                           RadioSettingValueList(
-                              LIST_10, current_index=_settings.toalarm))
+                              LEVEL10_LIST, current_index=_settings.toalarm))
         cfg_grp.append(rs)
         rs = RadioSetting("roger_beep", "Roger Beep",
                           RadioSettingValueList(
@@ -775,25 +776,29 @@ class KGQ10HRadio(WouxunKGBase):
         rs = RadioSetting("beep", "Keypad Beep",
                           RadioSettingValueBoolean(_settings.beep))
         cfg_grp.append(rs)
+
+        # display
         rs = RadioSetting("backlight", "Backlight Active Time",
                           RadioSettingValueList(
                               BACKLIGHT_LIST,
                               current_index=_settings.backlight))
         cfg_grp.append(rs)
-        rs = RadioSetting("DspBrtAct", "Display Brightness Active",
+        rs = RadioSetting("dsp_brt_act", "Display Brightness Active",
                           RadioSettingValueMap(
-                              DSPBRTACT_MAP, _settings.DspBrtAct))
+                              DSPBRTACT_MAP, _settings.dsp_brt_act))
         cfg_grp.append(rs)
-        rs = RadioSetting("DspBrtSby", "Display Brightness Standby",
+        rs = RadioSetting("dsp_brt_sby", "Display Brightness Standby",
                           RadioSettingValueList(
                               DSPBRTSBY_LIST,
-                              current_index=_settings.DspBrtSby))
+                              current_index=_settings.dsp_brt_sby))
         cfg_grp.append(rs)
         rs = RadioSetting("ponmsg", "Power-On Message",
                           RadioSettingValueList(
                               PONMSG_LIST,
                               current_index=_settings.ponmsg))
         cfg_grp.append(rs)
+
+        # scan
         rs = RadioSetting("scan_rev", "Scan Mode",
                           RadioSettingValueList(
                               SCANMODE_LIST,
@@ -802,10 +807,10 @@ class KGQ10HRadio(WouxunKGBase):
         rs = RadioSetting("scan_det", "Scan Mode Tone Detect",
                           RadioSettingValueBoolean(_settings.scan_det))
         cfg_grp.append(rs)
-        rs = RadioSetting("ToneScnSave", "Tone Scan Save",
+        rs = RadioSetting("tone_scn_save", "Tone Scan Save",
                           RadioSettingValueList(
                               TONESCANSAVELIST,
-                              current_index=_settings.ToneScnSave))
+                              current_index=_settings.tone_scn_save))
         cfg_grp.append(rs)
         rs = RadioSetting("prich_sw", "Priority Channel Scan",
                           RadioSettingValueBoolean(_settings.prich_sw))
@@ -814,12 +819,14 @@ class KGQ10HRadio(WouxunKGBase):
             "pri_ch", "Priority Channel",
             RadioSettingValueInteger(1, 999, _settings.pri_ch))
         cfg_grp.append(rs)
-        rs = RadioSetting("BCL_A", "Busy Channel Lockout A",
-                          RadioSettingValueBoolean(_settings.BCL_A))
+        rs = RadioSetting("bcl_a", "Busy Channel Lockout A",
+                          RadioSettingValueBoolean(_settings.bcl_a))
         cfg_grp.append(rs)
-        rs = RadioSetting("BCL_B", "Busy Channel Lockout B",
-                          RadioSettingValueBoolean(_settings.BCL_B))
+        rs = RadioSetting("bcl_b", "Busy Channel Lockout B",
+                          RadioSettingValueBoolean(_settings.bcl_b))
         cfg_grp.append(rs)
+
+        # DTMF
         rs = RadioSetting("dtmf_st", "DTMF Sidetone",
                           RadioSettingValueList(
                               DTMFST_LIST,
@@ -849,8 +856,10 @@ class KGQ10HRadio(WouxunKGBase):
         cfg_grp.append(rs)
         rs = RadioSetting("ring_time", "Ring Time",
                           RadioSettingValueList(
-                              LIST_10, current_index=_settings.ring_time))
+                              LEVEL10_LIST, current_index=_settings.ring_time))
         cfg_grp.append(rs)
+
+        # general
         rs = RadioSetting("autolock", "Auto Key Lock",
                           RadioSettingValueBoolean(_settings.autolock))
         cfg_grp.append(rs)
@@ -884,6 +893,8 @@ class KGQ10HRadio(WouxunKGBase):
                               THEME_LIST,
                               current_index=_settings.theme))
         cfg_grp.append(rs)
+
+        # repeater
         rs = RadioSetting("rpttype", "Repeater Type",
                           RadioSettingValueMap(
                               RPTTYPE_MAP, _settings.rpttype))
@@ -907,6 +918,8 @@ class KGQ10HRadio(WouxunKGBase):
                               SMUTESET_LIST,
                               current_index=_settings.smuteset))
         cfg_grp.append(rs)
+
+        # dual watch and work mode
         rs = RadioSetting("work_mode_a", "Work Mode A",
                           RadioSettingValueList(
                               WORKMODE_LIST,
@@ -937,15 +950,15 @@ class KGQ10HRadio(WouxunKGBase):
         rs = RadioSetting("sim_rec", "Simultaneous Receive",
                           RadioSettingValueBoolean(_settings.sim_rec))
         cfg_grp.append(rs)
-        rs = RadioSetting("ScnGrpA_Act", "Scan Group A Active",
+        rs = RadioSetting("scn_grp_a_act", "Scan Group A Active",
                           RadioSettingValueList(
                               SCANGRP_LIST,
-                              current_index=_settings.ScnGrpA_Act))
+                              current_index=_settings.scn_grp_a_act))
         cfg_grp.append(rs)
-        rs = RadioSetting("ScnGrpB_Act", "Scan Group B Active",
+        rs = RadioSetting("scn_grp_b_act", "Scan Group B Active",
                           RadioSettingValueList(
                               SCANGRP_LIST,
-                              current_index=_settings.ScnGrpB_Act))
+                              current_index=_settings.scn_grp_b_act))
         cfg_grp.append(rs)
         rs = RadioSetting("vfo_scanmodea", "VFO Scan Mode A",
                           RadioSettingValueList(
@@ -959,7 +972,7 @@ class KGQ10HRadio(WouxunKGBase):
         cfg_grp.append(rs)
         rs = RadioSetting("cur_call_grp", "Current Call Group",
                           RadioSettingValueList(
-                              LIST_10,
+                              LEVEL10_LIST,
                               current_index=_settings.cur_call_grp))
         cfg_grp.append(rs)
         rs = RadioSetting("ani_sw", "ANI Switch",
@@ -1035,9 +1048,9 @@ class KGQ10HRadio(WouxunKGBase):
         # --- FM Broadcast Presets ---
 
         for i in range(20):
-            val = self._memobj.fm[i].FM_radio
+            val = self._memobj.fm[i].fm_radio
             rs = RadioSetting(
-                "fm[%i].FM_radio" % i, "FM Preset %i" % (i + 1),
+                "fm[%i].fm_radio" % i, "FM Preset %i" % (i + 1),
                 RadioSettingValueFloat(76.0, 108.0, val / 10.0,
                                        0.1, 1))
             fmradio_grp.append(rs)
@@ -1045,9 +1058,9 @@ class KGQ10HRadio(WouxunKGBase):
         # --- OEM Info (read-only) ---
 
         def _decode(lst):
-            _str = ''.join([chr(int(c)) for c in lst
-                            if chr(int(c)) in chirp_common.CHARSET_ASCII])
-            return _str
+            result = ''.join([chr(int(c)) for c in lst
+                              if chr(int(c)) in chirp_common.CHARSET_ASCII])
+            return result
 
         def do_nothing(setting, obj):
             return
@@ -1104,7 +1117,7 @@ class KGQ10HRadio(WouxunKGBase):
                         for bit in bits[:-1]:
                             if "[" in bit and "]" in bit:
                                 bit, index = bit.split("[", 1)
-                                index, junk = index.split("]", 1)
+                                index, _ = index.split("]", 1)
                                 index = int(index)
                                 obj = getattr(obj, bit)[index]
                             else:
@@ -1129,4 +1142,4 @@ class KGQ10HRadio(WouxunKGBase):
                     raise
 
     def _is_fmradio(self, element):
-        return "FM_radio" in element.get_name()
+        return "fm_radio" in element.get_name()
