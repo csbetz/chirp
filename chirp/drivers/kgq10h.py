@@ -91,6 +91,26 @@ PROG_KEY_LIST = ["DISABLE/UNDEF", "ALARM", "BACKLIGHT", "BRIGHT+",
 PTT_LIST = ["Area A", "Area B", "Main Tx", "Secondary Tx",
             "Low Power", "Ultra Hi Power", "Call"]
 VFO_SCANMODE_LIST = ["Current Band", "Range", "All"]
+STEP_LIST = [str(x) for x in STEPS]
+BANDWIDTH_LIST = ["Narrow", "Wide"]
+OFFSET_LIST = ["Off", "Plus Shift", "Minus Shift"]
+
+# 0x8000 = CTCSS tone, 0x4000 = DCS-N, 0x6000 = DCS-I
+TONE_MAP = [('Off', 0x0000)] + \
+           [('%.1f' % tone, int(0x8000 + tone * 10))
+            for tone in chirp_common.TONES] + \
+           [('D%03dn' % tone, int(0x4000 + int(str(tone), 8)))
+            for tone in chirp_common.DTCS_CODES] + \
+           [('D%03di' % tone, int(0x6000 + int(str(tone), 8)))
+            for tone in chirp_common.DTCS_CODES]
+
+VFO_BAND_LABELS_A = ["VHF (136-174)", "UHF (400-479)", "220 (200-260)",
+                     "50 MHz (50-54)", "700+ (700-985)", "350 (320-400)"]
+VFO_BAND_LABELS_B = ["VHF (136-174)", "UHF (400-479)", "220 (200-260)",
+                     "50 MHz (50-54)"]
+FREQ_LIMIT_LABELS = ["Band 1 (VHF+Air/UHF)", "Band 2 (220/6m)",
+                     "Band 3 (900/350)", "Band 4 (2m/UHF)",
+                     "Band 5 (Air+2m/UHF)", "Band 6 (220/6m)"]
 
 # VFO scan range band labels
 VFO_RANGE_LABELS = [
@@ -182,6 +202,14 @@ struct {
     #seekto 0x0392;
     char    firmware[6];
 } oem_info;
+
+#seekto 0x03a6;
+struct {
+    ul32    rx_start;
+    ul32    rx_stop;
+    ul32    tx_start;
+    ul32    tx_stop;
+} freq_limits[6];
 
 #seekto 0x0440;
 struct {
@@ -306,6 +334,44 @@ struct {
     ul16    fm_radio;
 } fm[20];
 
+#seekto 0x0540;
+struct {
+    ul32    rxfreq;
+    ul32    offset;
+    ul16    rxtone;
+    ul16    txtone;
+    u8      scrambler:4,
+            am_mode:2,
+            power:2;
+    u8      unknown3:1,
+            ofst_dir:2,
+            unknown4:1,
+            compander:1,
+            mute_mode:2,
+            iswide:1;
+    u8      step;
+    u8      squelch;
+} vfoa[6];
+
+#seekto 0x05a0;
+struct {
+    ul32    rxfreq;
+    ul32    offset;
+    ul16    rxtone;
+    ul16    txtone;
+    u8      scrambler:4,
+            am_mode:2,
+            power:2;
+    u8      unknown3:1,
+            ofst_dir:2,
+            unknown4:1,
+            compander:1,
+            mute_mode:2,
+            iswide:1;
+    u8      step;
+    u8      squelch;
+} vfob[4];
+
 #seekto 0x05e0;
 struct {
     ul32    rxfreq;
@@ -367,12 +433,12 @@ struct {
 #seekto 0x78e0;
 struct {
     u8      cid[6];
-} call_ids[10];
+} call_ids[100];
 
 #seekto 0x7b40;
 struct {
     char    name[12];
-} call_names[10];
+} call_names[100];
 """
 
 
@@ -835,14 +901,19 @@ class KGQ10HRadio(WouxunKGBase):
 
         cfg_grp = RadioSettingGroup("cfg_grp", "Config Settings")
         key_grp = RadioSettingGroup("key_grp", "Key Settings")
+        vfoa_grp = RadioSettingGroup("vfoa_grp", "VFO A Sub-Bands")
+        vfob_grp = RadioSettingGroup("vfob_grp", "VFO B Sub-Bands")
         scan_grp = RadioSettingGroup("scan_grp", "Scan Groups")
         call_grp = RadioSettingGroup("call_grp", "Caller ID")
         vfoscan_grp = RadioSettingGroup("vfoscan_grp", "VFO Scan Ranges")
+        gps_grp = RadioSettingGroup("gps_grp", "GPS Settings")
         fmradio_grp = RadioSettingGroup("fmradio_grp", "FM Broadcast")
+        lmt_grp = RadioSettingGroup("lmt_grp", "Frequency Limits")
         oem_grp = RadioSettingGroup("oem_grp", "OEM Info")
 
-        group = RadioSettings(cfg_grp, key_grp, scan_grp, call_grp,
-                              vfoscan_grp, fmradio_grp, oem_grp)
+        group = RadioSettings(cfg_grp, key_grp, vfoa_grp, vfob_grp,
+                              scan_grp, call_grp, vfoscan_grp, gps_grp,
+                              fmradio_grp, lmt_grp, oem_grp)
 
         # --- Config Settings ---
 
@@ -1169,7 +1240,7 @@ class KGQ10HRadio(WouxunKGBase):
         def apply_callid(setting, obj):
             obj.cid = str2callid(setting.value)
 
-        for i in range(10):
+        for i in range(100):
             # Call name
             _name = self._memobj.call_names[i]
             _msg = ""
@@ -1210,6 +1281,167 @@ class KGQ10HRadio(WouxunKGBase):
                 RadioSettingValueInteger(0, 999, end_mhz))
             vfoscan_grp.append(rs)
 
+        # --- VFO A Sub-Bands ---
+
+        for i in range(6):
+            _vfo = self._memobj.vfoa[i]
+            label = VFO_BAND_LABELS_A[i]
+            prefix = "vfoa[%i]" % i
+
+            _vfo.power = _vfo.power & 0x03
+            rs = RadioSetting(
+                "%s.rxfreq" % prefix, "%s Rx Freq (MHz)" % label,
+                RadioSettingValueFloat(
+                    30.0, 999.999999,
+                    _vfo.rxfreq / 100000.0, 0.000001, 6))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.offset" % prefix, "%s Offset (MHz)" % label,
+                RadioSettingValueFloat(
+                    0.0, 599.999999,
+                    _vfo.offset / 100000.0, 0.000001, 6))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.ofst_dir" % prefix, "%s Shift Dir" % label,
+                RadioSettingValueList(
+                    OFFSET_LIST, current_index=_vfo.ofst_dir))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.rxtone" % prefix, "%s Rx Tone" % label,
+                RadioSettingValueMap(TONE_MAP, _vfo.rxtone))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.txtone" % prefix, "%s Tx Tone" % label,
+                RadioSettingValueMap(TONE_MAP, _vfo.txtone))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.power" % prefix, "%s Power" % label,
+                RadioSettingValueList(
+                    ["Lo", "Mid", "Hi"],
+                    current_index=_vfo.power))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.iswide" % prefix, "%s Wide/Narrow" % label,
+                RadioSettingValueList(
+                    BANDWIDTH_LIST, current_index=_vfo.iswide))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.step" % prefix, "%s Step (kHz)" % label,
+                RadioSettingValueList(
+                    STEP_LIST, current_index=_vfo.step))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.squelch" % prefix, "%s Squelch" % label,
+                RadioSettingValueList(
+                    LEVEL10_LIST, current_index=_vfo.squelch))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.scrambler" % prefix, "%s Scrambler" % label,
+                RadioSettingValueList(
+                    SCRAMBLER_LIST, current_index=_vfo.scrambler))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.compander" % prefix, "%s Compander" % label,
+                RadioSettingValueBoolean(_vfo.compander))
+            vfoa_grp.append(rs)
+            rs = RadioSetting(
+                "%s.mute_mode" % prefix, "%s Mute" % label,
+                RadioSettingValueList(
+                    MUTE_MODE_LIST, current_index=_vfo.mute_mode))
+            vfoa_grp.append(rs)
+
+        # --- VFO B Sub-Bands ---
+
+        for i in range(4):
+            _vfo = self._memobj.vfob[i]
+            # Skip uninitialized sub-bands (0xDD fill)
+            if _vfo.rxfreq == 0xDDDDDDDD:
+                continue
+            label = VFO_BAND_LABELS_B[i]
+            prefix = "vfob[%i]" % i
+
+            _vfo.power = _vfo.power & 0x03
+            rs = RadioSetting(
+                "%s.rxfreq" % prefix, "%s Rx Freq (MHz)" % label,
+                RadioSettingValueFloat(
+                    30.0, 999.999999,
+                    _vfo.rxfreq / 100000.0, 0.000001, 6))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.offset" % prefix, "%s Offset (MHz)" % label,
+                RadioSettingValueFloat(
+                    0.0, 599.999999,
+                    _vfo.offset / 100000.0, 0.000001, 6))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.ofst_dir" % prefix, "%s Shift Dir" % label,
+                RadioSettingValueList(
+                    OFFSET_LIST, current_index=_vfo.ofst_dir))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.rxtone" % prefix, "%s Rx Tone" % label,
+                RadioSettingValueMap(TONE_MAP, _vfo.rxtone))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.txtone" % prefix, "%s Tx Tone" % label,
+                RadioSettingValueMap(TONE_MAP, _vfo.txtone))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.power" % prefix, "%s Power" % label,
+                RadioSettingValueList(
+                    ["Lo", "Mid", "Hi"],
+                    current_index=_vfo.power))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.iswide" % prefix, "%s Wide/Narrow" % label,
+                RadioSettingValueList(
+                    BANDWIDTH_LIST, current_index=_vfo.iswide))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.step" % prefix, "%s Step (kHz)" % label,
+                RadioSettingValueList(
+                    STEP_LIST, current_index=_vfo.step))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.squelch" % prefix, "%s Squelch" % label,
+                RadioSettingValueList(
+                    LEVEL10_LIST, current_index=_vfo.squelch))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.scrambler" % prefix, "%s Scrambler" % label,
+                RadioSettingValueList(
+                    SCRAMBLER_LIST, current_index=_vfo.scrambler))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.compander" % prefix, "%s Compander" % label,
+                RadioSettingValueBoolean(_vfo.compander))
+            vfob_grp.append(rs)
+            rs = RadioSetting(
+                "%s.mute_mode" % prefix, "%s Mute" % label,
+                RadioSettingValueList(
+                    MUTE_MODE_LIST, current_index=_vfo.mute_mode))
+            vfob_grp.append(rs)
+
+        # --- GPS Settings ---
+
+        rs = RadioSetting("gps", "GPS",
+                          RadioSettingValueBoolean(_settings.gps))
+        gps_grp.append(rs)
+        rs = RadioSetting("gps_rcv", "GPS Receive",
+                          RadioSettingValueBoolean(_settings.gps_rcv))
+        gps_grp.append(rs)
+        rs = RadioSetting("gps_send_freq", "GPS Send Frequency",
+                          RadioSettingValueBoolean(
+                              _settings.gps_send_freq))
+        gps_grp.append(rs)
+        rs = RadioSetting("disp_time", "Display Time",
+                          RadioSettingValueBoolean(_settings.disp_time))
+        gps_grp.append(rs)
+        rs = RadioSetting("time_zone", "Time Zone (UTC offset)",
+                          RadioSettingValueInteger(0, 24,
+                                                   _settings.time_zone))
+        gps_grp.append(rs)
+
         # --- FM Broadcast Presets ---
 
         for i in range(20):
@@ -1220,15 +1452,34 @@ class KGQ10HRadio(WouxunKGBase):
                                        0.1, 1))
             fmradio_grp.append(rs)
 
+        # --- Frequency Limits (read-only) ---
+
+        def do_nothing(setting, obj):
+            return
+
+        for i in range(6):
+            _lim = self._memobj.freq_limits[i]
+            for field, flabel in [("rx_start", "RX Lower"),
+                                  ("rx_stop", "RX Upper"),
+                                  ("tx_start", "TX Lower"),
+                                  ("tx_stop", "TX Upper")]:
+                val = RadioSettingValueFloat(
+                    0.0, 1000.0,
+                    getattr(_lim, field) / 100000.0, 0.000001, 6)
+                val.set_mutable(False)
+                rs = RadioSetting(
+                    "freq_limits[%i].%s" % (i, field),
+                    "%s %s (MHz)" % (FREQ_LIMIT_LABELS[i], flabel),
+                    val)
+                rs.set_apply_callback(do_nothing, _settings)
+                lmt_grp.append(rs)
+
         # --- OEM Info (read-only) ---
 
         def _decode(lst):
             result = ''.join([chr(int(c)) for c in lst
                               if chr(int(c)) in chirp_common.CHARSET_ASCII])
             return result
-
-        def do_nothing(setting, obj):
-            return
 
         _str = _decode(_oem.oem1)
         val = RadioSettingValueString(0, 8, _str)
@@ -1296,6 +1547,10 @@ class KGQ10HRadio(WouxunKGBase):
                     if element.has_apply_callback():
                         LOG.debug("Using apply callback")
                         element.run_apply_callback()
+                    elif self._is_freq(element):
+                        setattr(obj, setting,
+                                int(element.values()[0]._current *
+                                    100000.0))
                     elif self._is_fmradio(element):
                         # rescale float to radio integer (e.g. 88.5 → 885)
                         setattr(obj, setting,
@@ -1307,6 +1562,14 @@ class KGQ10HRadio(WouxunKGBase):
                 except Exception:
                     LOG.debug(element.get_name())
                     raise
+
+    def _is_freq(self, element):
+        return ("rxfreq" in element.get_name() or
+                "offset" in element.get_name() or
+                "rx_start" in element.get_name() or
+                "rx_stop" in element.get_name() or
+                "tx_start" in element.get_name() or
+                "tx_stop" in element.get_name())
 
     def _is_fmradio(self, element):
         return "fm_radio" in element.get_name()
