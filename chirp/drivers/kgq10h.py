@@ -389,7 +389,7 @@ class KGQ10HRadio(WouxunKGBase):
         # duplex and offset
         self._decode_duplex_offset(mem, _mem)
 
-        # name
+        # name (12 chars, zero-padded)
         self._decode_name(mem, _nam)
 
         # tones
@@ -423,8 +423,7 @@ class KGQ10HRadio(WouxunKGBase):
 
         rs = RadioSetting(
             "compander", "Compander",
-            RadioSettingValueBoolean(
-                not mem.empty and bool(_mem.compander)))
+            RadioSettingValueBoolean(bool(_mem.compander)))
         mem.extra.append(rs)
 
         rs = RadioSetting(
@@ -437,14 +436,12 @@ class KGQ10HRadio(WouxunKGBase):
 
         rs = RadioSetting(
             "favorite", "Favorite",
-            RadioSettingValueBoolean(
-                not mem.empty and bool(_mem.favorite)))
+            RadioSettingValueBoolean(bool(_mem.favorite)))
         mem.extra.append(rs)
 
         rs = RadioSetting(
             "send_loc", "Send Location",
-            RadioSettingValueBoolean(
-                not mem.empty and bool(_mem.send_loc)))
+            RadioSettingValueBoolean(bool(_mem.send_loc)))
         mem.extra.append(rs)
 
         rs = RadioSetting(
@@ -485,7 +482,7 @@ class KGQ10HRadio(WouxunKGBase):
         # skip (scan_add=1 means scan enabled, i.e. not skipped)
         _mem.scan_add = int(mem.skip != "S")
 
-        # mode
+        # mode (AM is always wideband on this radio)
         if mem.mode == "AM":
             _mem.am_mode = 1
             _mem.iswide = 1
