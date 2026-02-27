@@ -28,6 +28,8 @@ import logging
 
 from chirp import util, chirp_common, bitwise, memmap, errors, directory
 from chirp.drivers.wouxun_kg_common import WouxunKGBase, strxor
+from chirp.settings import RadioSetting, RadioSettingGroup, \
+    RadioSettingValueBoolean, RadioSettingValueList
 
 LOG = logging.getLogger(__name__)
 
@@ -47,6 +49,10 @@ POWER_LEVELS = [
 STEPS = [2.5, 5.0, 6.25, 10.0, 12.5, 25.0, 50.0, 100.0]
 
 AIRBAND = (108000000, 136000000)
+
+SCRAMBLER_LIST = ["Off", "1", "2", "3", "4", "5", "6", "7", "8"]
+MUTE_MODE_LIST = ["Off", "QT", "QT+DTMF", "QT*DTMF"]
+CALL_GROUP_LIST = [str(x) for x in range(1, 21)]
 
 # CHIRP linear memory map (all offsets in linear space):
 #   0x0000-0x02C2  Unknown / unused
@@ -404,6 +410,51 @@ class KGQ10HRadio(WouxunKGBase):
         else:
             mem.mode = "NFM"
 
+        # extras
+        mem.extra = RadioSettingGroup("Extra", "extra")
+
+        rs = RadioSetting(
+            "scrambler", "Scrambler",
+            RadioSettingValueList(
+                SCRAMBLER_LIST,
+                current_index=min(int(_mem.scrambler),
+                                  len(SCRAMBLER_LIST) - 1)))
+        mem.extra.append(rs)
+
+        rs = RadioSetting(
+            "compander", "Compander",
+            RadioSettingValueBoolean(
+                not mem.empty and bool(_mem.compander)))
+        mem.extra.append(rs)
+
+        rs = RadioSetting(
+            "mute_mode", "Mute Mode",
+            RadioSettingValueList(
+                MUTE_MODE_LIST,
+                current_index=min(int(_mem.mute_mode),
+                                  len(MUTE_MODE_LIST) - 1)))
+        mem.extra.append(rs)
+
+        rs = RadioSetting(
+            "favorite", "Favorite",
+            RadioSettingValueBoolean(
+                not mem.empty and bool(_mem.favorite)))
+        mem.extra.append(rs)
+
+        rs = RadioSetting(
+            "send_loc", "Send Location",
+            RadioSettingValueBoolean(
+                not mem.empty and bool(_mem.send_loc)))
+        mem.extra.append(rs)
+
+        rs = RadioSetting(
+            "call_group", "Call Group",
+            RadioSettingValueList(
+                CALL_GROUP_LIST,
+                current_index=min(int(_mem.call_group),
+                                  len(CALL_GROUP_LIST) - 1)))
+        mem.extra.append(rs)
+
         return mem
 
     def set_memory(self, mem):
@@ -454,10 +505,39 @@ class KGQ10HRadio(WouxunKGBase):
         else:
             _mem.power = 0
 
-        # clear optional fields
-        _mem.scrambler = 0
-        _mem.compander = 0
-        _mem.mute_mode = 0
+        # extras (may be absent when importing from a different radio)
+        if "scrambler" in mem.extra:
+            _mem.scrambler = SCRAMBLER_LIST.index(
+                str(mem.extra["scrambler"].value))
+        else:
+            _mem.scrambler = 0
+
+        if "compander" in mem.extra:
+            _mem.compander = int(bool(mem.extra["compander"].value))
+        else:
+            _mem.compander = 0
+
+        if "mute_mode" in mem.extra:
+            _mem.mute_mode = MUTE_MODE_LIST.index(
+                str(mem.extra["mute_mode"].value))
+        else:
+            _mem.mute_mode = 0
+
+        if "favorite" in mem.extra:
+            _mem.favorite = int(bool(mem.extra["favorite"].value))
+        else:
+            _mem.favorite = 0
+
+        if "send_loc" in mem.extra:
+            _mem.send_loc = int(bool(mem.extra["send_loc"].value))
+        else:
+            _mem.send_loc = 0
+
+        if "call_group" in mem.extra:
+            _mem.call_group = CALL_GROUP_LIST.index(
+                str(mem.extra["call_group"].value))
+        else:
+            _mem.call_group = 0
 
         # name (12 chars, zero-padded)
         for i in range(12):
